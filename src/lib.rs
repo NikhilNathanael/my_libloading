@@ -1,5 +1,4 @@
-use std::collections::HashMap;
-use std::ffi::{c_char, c_void, CString, CStr, c_int};
+use std::ffi::{c_char, c_void, CStr, c_int};
 use std::marker::PhantomData;
 
 type HMODULE = HINSTANCE;
