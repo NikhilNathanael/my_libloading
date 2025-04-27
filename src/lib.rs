@@ -10,7 +10,7 @@ type CHAR = c_char;
 type BOOL = c_int;
 
 #[link(name = "kernel32", kind="static")]
-unsafe extern "C" {
+unsafe extern "system" {
 	pub fn LoadLibraryA(lpLibFileName: LPCSTR) -> HMODULE;
 	pub fn GetProcAddress(hmodule: HMODULE, lpProcName: LPCSTR) -> *mut c_void;
 	pub fn FreeLibrary(hLibModule: HMODULE) -> BOOL;
@@ -22,6 +22,8 @@ unsafe extern "C" {
 pub struct Library {
 	module: HMODULE,
 }
+unsafe impl Send for Library {}
+unsafe impl Sync for Library {}
 
 impl Library {
 	/// Load a library at the given path
@@ -81,6 +83,9 @@ pub struct Symbol<'a, T> {
 	ptr: *mut (),
 	_marker: PhantomData<&'a T>,
 }
+
+unsafe impl<'a, T> Send for Symbol<'a, T> {}
+unsafe impl<'a, T> Sync for Symbol<'a, T> {}
 
 impl<'a, T> std::ops::Deref for Symbol<'a, T> {
 	type Target = T;
