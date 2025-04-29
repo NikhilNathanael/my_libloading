@@ -1,20 +1,7 @@
-use std::ffi::{c_char, c_void, CStr, c_int};
+use std::ffi::CStr;
 use std::marker::PhantomData;
-
-type HMODULE = HINSTANCE;
-type HINSTANCE = HANDLE;
-type HANDLE = *mut c_void;
-
-type LPCSTR = *mut CHAR;
-type CHAR = c_char;
-type BOOL = c_int;
-
-#[link(name = "kernel32", kind="static")]
-unsafe extern "system" {
-	pub fn LoadLibraryA(lpLibFileName: LPCSTR) -> HMODULE;
-	pub fn GetProcAddress(hmodule: HMODULE, lpProcName: LPCSTR) -> *mut c_void;
-	pub fn FreeLibrary(hLibModule: HMODULE) -> BOOL;
-}
+use windows_sys::Win32::System::LibraryLoader::{LoadLibraryA, GetProcAddress};
+use windows_sys::Win32::Foundation::{FreeLibrary, HMODULE};
 
 /// Wrapper over windows dll
 /// 
@@ -22,6 +9,7 @@ unsafe extern "system" {
 pub struct Library {
 	module: HMODULE,
 }
+
 unsafe impl Send for Library {}
 unsafe impl Sync for Library {}
 
@@ -30,7 +18,7 @@ impl Library {
 	///
 	/// Returns None if the library does not exist
 	pub fn load<A: AsRef<CStr>>(name: A) -> Option<Self> {
-		let module = unsafe{LoadLibraryA(name.as_ref().as_ptr().cast_mut())};
+		let module = unsafe{LoadLibraryA(name.as_ref().as_ptr().cast())};
 		if !module.is_null() {
 			Some(Self {
 				module,
@@ -55,16 +43,14 @@ impl Library {
 	/// If it is a pointer to a static member, then the type MUST be *const T or *mut T
 	pub unsafe fn get<A: AsRef<CStr>, T>(&self, symbol_name: A) -> Option<Symbol<T>> {
 		// SAFETY: FFI
-		let ptr = unsafe{GetProcAddress(self.module, symbol_name.as_ref().as_ptr().cast_mut())};
+		let ptr = unsafe{GetProcAddress(self.module, symbol_name.as_ref().as_ptr().cast())};
 
-		if !ptr.is_null() {
-			Some(Symbol {
+		ptr.map(|ptr| {
+			Symbol {
 				ptr: ptr as *mut (),
 				_marker: PhantomData,
-			})
-		} else {
-			None
-		}
+			}
+		})
 	}
 }
 
