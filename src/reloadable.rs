@@ -1,5 +1,5 @@
 use crate::library::*;
-use std::ffi::CStr;
+use std::ffi::{CStr, CString};
 use std::sync::Arc;
 use std::marker::PhantomData;
 use arc_atomic::AtomicArc;
@@ -7,7 +7,7 @@ use arc_atomic::AtomicArc;
 pub struct ReloadableLibrary {
 	name: &'static CStr,
 	inner: AtomicArc<Inner>,
-	symbols: Box<[&'static CStr]>,
+	symbols: Box<[CString]>,
 }
 
 struct Inner {
@@ -16,8 +16,8 @@ struct Inner {
 }
 
 impl Inner {
-	pub fn new(_lib: Library, symbols: &[&'static CStr]) -> Self {
-		let pointers = symbols.into_iter().map(|symbol| _lib.get_ptr(symbol)
+	pub fn new(_lib: Library, symbols: &[CString]) -> Self {
+		let pointers = symbols.into_iter().map(|symbol| _lib.get_ptr(&symbol)
 				.unwrap_or_else(|| panic!("Could not find symbol: {:?}", symbol))
 			)
 			.collect::<Box<[_]>>();
@@ -29,7 +29,13 @@ impl Inner {
 }
 
 impl ReloadableLibrary {
-	pub fn new<const N: usize>(name: &'static CStr, symbols: &[&'static CStr;N]) -> Self {
+	/// Create a new ReloadableLibrary with the given name and load the given symbols from it
+	/// Panics if the library is not found or if any of the symbols are not found.
+	///
+	/// symbols are not deduplicated so each instance of a duplicated symbol must be loaded,
+	/// but only the first instance can be obtained through [Self::get_symbol], so consider 
+	/// depduplicating symbols before passing them in
+	pub fn new<const N: usize>(name: &'static CStr, symbols: &[CString;N]) -> Self {
 		// Load library
 		let lib = Library::load(name)
 			.unwrap_or_else(|| panic!("Could not load library {:?}", name));
@@ -43,14 +49,14 @@ impl ReloadableLibrary {
 
 		Self {
 			name,
-			symbols: (*symbols).into(),
+			symbols: (symbols as &[CString]).into(),
 			inner,
 		}
 	}
 
 	pub unsafe fn get_symbol<T>(&self, symbol: &CStr) -> Option<ReloadableSymbol<T>> {
 		// Get symbol index in list
-		let Some(symbol_index) = self.symbols.iter().enumerate().find(|(_, x)| *x == &symbol)
+		let Some(symbol_index) = self.symbols.iter().enumerate().find(|(_, x)| &***x == symbol)
 			.map(|x| x.0) else {
 				return None;
 		};
@@ -98,13 +104,15 @@ impl<'a, T> ReloadableSymbol<'a, T> {
 	}
 }
 
-// Holds a symbol and an Arc to the library it comes from
+/// Holds a symbol and an Arc to the library it comes from
 pub struct LoadedSymbol<T> {
 	_lib: Arc<Inner>,
 	symbol: RawSymbol<T>,
 }
 
 impl<T> LoadedSymbol<T> {
+	/// # SAFETY 
+	/// - The symbol input must have come from the library input
 	unsafe fn new(_lib: Arc<Inner>, symbol: RawSymbol<T>) -> Self {
 		Self {
 			_lib,
