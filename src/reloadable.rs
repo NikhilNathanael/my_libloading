@@ -35,7 +35,7 @@ impl ReloadableLibrary {
 	/// symbols are not deduplicated so each instance of a duplicated symbol must be loaded,
 	/// but only the first instance can be obtained through [Self::get_symbol], so consider 
 	/// depduplicating symbols before passing them in
-	pub fn new<const N: usize>(name: &'static CStr, symbols: &[CString;N]) -> Self {
+	pub fn new<const N: usize>(name: &'static CStr, symbols: [CString;N]) -> Self {
 		// Load library
 		let lib = Library::load(name)
 			.unwrap_or_else(|| panic!("Could not load library {:?}", name));
@@ -43,13 +43,13 @@ impl ReloadableLibrary {
 		// turn library into Inner and put it in an atomic arc
 		let inner = AtomicArc::new(
 			Arc::new(
-				Inner::new(lib, symbols)
+				Inner::new(lib, &symbols)
 			)
 		);
 
 		Self {
 			name,
-			symbols: (symbols as &[CString]).into(),
+			symbols: (&symbols as &[CString]).into(),
 			inner,
 		}
 	}
@@ -109,6 +109,8 @@ pub struct LoadedSymbol<T> {
 	_lib: Arc<Inner>,
 	symbol: RawSymbol<T>,
 }
+unsafe impl<T> Send for LoadedSymbol<T> {}
+unsafe impl<T> Sync for LoadedSymbol<T> {}
 
 impl<T> LoadedSymbol<T> {
 	/// # SAFETY 
